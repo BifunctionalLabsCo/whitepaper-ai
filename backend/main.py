@@ -27,7 +27,9 @@ processor = AzureWhitepaperProcessor()
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (fine for demo)
+    allow_origins=[
+        os.getenv("VITE_API_BASE_URL")
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: whitepaper-ai
+    env: python
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    envVars:
+      - key: AZURE_AI_TOKEN
+        sync: false
+      - key: AZURE_AI_ENDPOINT
+        sync: false
+      - key: AZURE_AI_MODEL_NAME
+        sync: false
+      - key: DEVELOPMENT
+        value: true
+      - key: VITE_API_BASE_URL
+        value: "https://whitepaper-ai.onrender.com/"
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
+      - key: FIREBASE_CONFIG
+        sync: false

@@ -25,14 +25,10 @@ Whitepaper AI transforms complex technical whitepapers into structured, interact
 ### Backend
 - FastAPI (Python)
 - PyPDF2 + Tesseract OCR for document processing
-- spaCy, NLTK for text processing
-- ChromaDB for vector search
-- MongoDB for user data
 - Firebase Auth for authentication
-- AWS S3 for document storage
 
 ### AI Integration
-- Azure AI gpt-4o model
+- Azure AI Llama 3 model
 - Custom processing pipeline for educational content generation
 
 ## Quick Start

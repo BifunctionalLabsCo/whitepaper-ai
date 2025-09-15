@@ -1,12 +1,12 @@
 # backend/main.py
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
 import asyncio
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict
 
 from dotenv import load_dotenv
 
@@ -14,34 +14,8 @@ from backend.azure_processor import AzureWhitepaperProcessor
 from backend.models.course import Course, Module, ProcessingStatus
 from backend.database import startup_db
 
+
 load_dotenv()
-
-# ----- Ensure NLTK and spaCy resources are available -----
-import nltk
-import spacy
-from nltk.data import find as nltk_find
-from spacy.util import is_package
-
-try:
-    nltk_find('tokenizers/punkt')
-except LookupError:
-    print("🔽 Downloading NLTK 'punkt'...")
-    nltk.download('punkt')
-
-try:
-    nltk_find('corpora/stopwords')
-except LookupError:
-    print("🔽 Downloading NLTK 'stopwords'...")
-    nltk.download('stopwords')
-
-model_name = "en_core_web_sm"
-if not is_package(model_name):
-    try:
-        spacy.load(model_name)
-    except OSError:
-        print(f"🔽 Downloading spaCy model '{model_name}'...")
-        from spacy.cli import download
-        download(model_name)
 
 app = FastAPI(title="Whitepaper AI API", version="1.0.0")
 
@@ -79,11 +53,7 @@ async def startup_event():
 async def test_upload(file: UploadFile = File(...)):
     """Debug upload endpoint"""
     contents = await file.read()
-    return {
-        "filename": file.filename,
-        "size": len(contents),
-        "content_type": file.content_type
-    }
+    return {"filename": file.filename, "size": len(contents), "content_type": file.content_type}
 
 
 @app.post("/api/upload")
@@ -111,7 +81,7 @@ async def upload_whitepaper(
         "title": title or file.filename.replace(".pdf", ""),
         "type": "pdf",
         "uploaded_at": asyncio.get_event_loop().time(),
-        "status": "uploaded"
+        "status": "uploaded",
     }
 
     # Save metadata + file to Firestore
@@ -122,7 +92,7 @@ async def upload_whitepaper(
         id=upload_id,
         status="uploaded",
         progress=0,
-        message="File uploaded. Ready to design course."
+        message="File uploaded. Ready to design course.",
     )
 
     return {"id": upload_id, "status": "uploaded", "message": "Upload successful!"}
@@ -138,10 +108,7 @@ async def design_course(upload_id: str):
 
     # Update status
     processing_status[upload_id] = ProcessingStatus(
-        id=upload_id,
-        status="processing",
-        progress=10,
-        message="Starting AI analysis..."
+        id=upload_id, status="processing", progress=10, message="Starting AI analysis..."
     )
 
     # Offload processing
@@ -206,10 +173,10 @@ async def process_pdf_background(upload_id: str):
                     "id": str(uuid.uuid4()),
                     "questions": [],
                     "attempts": 0,
-                    "generated_at": asyncio.get_event_loop().time()
+                    "generated_at": asyncio.get_event_loop().time(),
                 },
                 completed=False,
-                timeSpent=0
+                timeSpent=0,
             ).model_dump()
 
             module_docs.append(full_module)
@@ -229,7 +196,7 @@ async def process_pdf_background(upload_id: str):
             estimatedTime=course_data["estimatedTime"],
             difficulty=course_data["difficulty"],
             createdAt=course_data["createdAt"],
-            progress=0
+            progress=0,
         ).model_dump()
 
         # Save course
@@ -250,6 +217,7 @@ async def process_pdf_background(upload_id: str):
     except Exception as e:
         print(f"💥 Error in background processing: {e}")
         import traceback
+
         traceback.print_exc()
         processing_status[upload_id].status = "failed"
         processing_status[upload_id].message = f"Processing failed: {str(e)}"
@@ -298,6 +266,7 @@ async def get_user_courses():
 # On-demand Content Generation
 # -----------------------------
 
+
 @app.post("/api/courses/{course_id}/modules/{module_id}/generate-quiz")
 async def generate_quiz(course_id: str, module_id: str):
     module = await db.modules.find_one({"id": module_id})
@@ -305,9 +274,7 @@ async def generate_quiz(course_id: str, module_id: str):
         raise HTTPException(status_code=404, detail="Module not found")
 
     quiz = await processor.generate_module_quiz(
-        module["title"],
-        module["content"],
-        module.get("source_text", "")
+        module["title"], module["content"], module.get("source_text", "")
     )
 
     await db.update_quiz(module_id, quiz)
@@ -321,9 +288,7 @@ async def generate_flashcards(course_id: str, module_id: str):
         raise HTTPException(status_code=404, detail="Module not found")
 
     flashcards = await processor.generate_module_flashcards(
-        module["title"],
-        module["content"],
-        module.get("source_text", "")
+        module["title"], module["content"], module.get("source_text", "")
     )
 
     await db.update_flashcards(module_id, flashcards)
@@ -349,10 +314,7 @@ async def submit_quiz(course_id: str, module_id: str, payload: dict):
     # Update attempt count and score in course
     await db.courses.update_one(
         {"id": course_id, "user_id": "demo_user", "modules.id": module_id},
-        {
-            "$inc": {"modules.$.quiz.attempts": 1},
-            "$set": {"modules.$.quiz.score": score}
-        }
+        {"$inc": {"modules.$.quiz.attempts": 1}, "$set": {"modules.$.quiz.score": score}},
     )
 
     return {"score": score, "correct": correct, "total": total, "passed": score >= 70}
@@ -361,6 +323,7 @@ async def submit_quiz(course_id: str, module_id: str, payload: dict):
 # -----------------------
 # Export (Placeholder)
 # -----------------------
+
 
 @app.get("/api/courses/{course_id}/export/{format}")
 async def export_course(course_id: str, format: str):
@@ -380,6 +343,7 @@ async def export_course(course_id: str, format: str):
 
 app.mount("/", StaticFiles(directory="./dist", html=True), name="frontend")
 
+
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
     if full_path.startswith("api/"):
@@ -389,4 +353,5 @@ async def serve_spa(full_path: str):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

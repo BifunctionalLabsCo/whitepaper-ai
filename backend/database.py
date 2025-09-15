@@ -3,9 +3,11 @@ import os
 from firebase_admin import firestore
 from backend.firebase_config import initialize_firebase
 
+
 class Database:
     client = None
     database = None
+
 
 # Global database instance
 db_instance = Database()
@@ -32,6 +34,7 @@ class FirestoreDatabase:
             raise ValueError("Module not found")
 
         doc_ref.update({"flashcards": flashcards})
+
 
 class FirestoreCollection:
     def __init__(self, collection_ref):
@@ -67,7 +70,8 @@ class FirestoreCollection:
 
     async def create_index(self, index_spec):
         pass  # Firestore auto-indexes
-        
+
+
 class FirestoreCursor:
     def __init__(self, query):
         self.query = query

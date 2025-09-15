@@ -10,39 +10,9 @@ import uuid
 
 from backend.azure_processor import AzureWhitepaperProcessor
 from backend.models.course import Course, ProcessingStatus, Module
-# from firebase_config import get_current_user  # Temporarily disabled
-from backend.database import connect_to_db, startup_db
+from backend.database import startup_db
 
 load_dotenv()
-
-# ----- Ensure NLTK and spaCy resources are available -----
-import nltk
-import spacy
-from nltk.data import find as nltk_find
-from spacy.util import is_package
-
-# Ensure NLTK data is available
-try:
-    nltk_find('tokenizers/punkt')
-except LookupError:
-    print("🔽 Downloading NLTK 'punkt'...")
-    nltk.download('punkt')
-
-try:
-    nltk_find('corpora/stopwords')
-except LookupError:
-    print("🔽 Downloading NLTK 'stopwords'...")
-    nltk.download('stopwords')
-
-# Ensure spaCy model is available
-model_name = "en_core_web_sm"
-if not is_package(model_name):
-    try:
-        spacy.load(model_name)
-    except OSError:
-        print(f"🔽 Downloading spaCy model '{model_name}'...")
-        from spacy.cli import download
-        download(model_name)
 
 app = FastAPI(title="Whitepaper AI API", version="1.0.0")
 

@@ -4,7 +4,7 @@
 
 ## Overview
 
-Whitepaper AI transforms complex technical whitepapers into structured, interactive learning experiences using Azure AI's gpt-4o model. The platform analyzes academic and technical documents, breaks them into digestible learning modules, and generates interactive educational content including flashcards, quizzes, and progress tracking.
+Whitepaper AI transforms complex technical whitepapers into structured, interactive learning experiences using Azure AI's Meta-Llama-3.1-405B-Instruct model. The platform analyzes academic and technical documents, breaks them into digestible learning modules, and generates interactive educational content including flashcards, quizzes, and progress tracking.
 
 ## Features
 
@@ -25,10 +25,13 @@ Whitepaper AI transforms complex technical whitepapers into structured, interact
 ### Backend
 - FastAPI (Python)
 - PyPDF2 + Tesseract OCR for document processing
+- spaCy, NLTK for text processing
+- ChromaDB for vector search
+- Firebase Firestore for storage
 - Firebase Auth for authentication
 
 ### AI Integration
-- Azure AI Llama 3 model
+- Azure AI Meta-Llama-3.1-405B-Instruct model
 - Custom processing pipeline for educational content generation
 
 ## Quick Start
@@ -37,7 +40,7 @@ Whitepaper AI transforms complex technical whitepapers into structured, interact
 - Node.js 18+
 - Python 3.9+
 - Azure AI credentials
-- Firebase project
+- Firebase project (Auth + Firestore)
 
 ### Installation
 
@@ -102,17 +105,6 @@ whitepaper-ai/
 ├── setup.sh                              # Setup script
 └── README.md
 ```
-
-## Development Timeline
-
-- **Phase 1**: Foundation (Weeks 1-2)
-- **Phase 2**: Learning Engine (Weeks 3-4)
-- **Phase 3**: Polish & Export (Weeks 5-6)
-- **Phase 4**: Optimization (Week 7)
-
-## Contributing
-
-Please read the PRD document for detailed requirements and implementation guidelines.
 
 ## Deployment on Render
 

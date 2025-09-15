@@ -103,7 +103,7 @@ async def upload_whitepaper(
         "type": "pdf",
         "uploaded_at": asyncio.get_event_loop().time(),
         "status": "uploaded",
-        "file_content": file_content  # CRITICAL: Store the actual file bytes
+        "file_content": file_content
     }
 
     try:
@@ -163,13 +163,15 @@ async def process_pdf_background(upload_id: str):
         
         # Create a proper UploadFile object
         from fastapi import UploadFile as FastAPIUploadFile
+        
+        # ✅ FIXED: Removed 'content_type' parameter to avoid error
         mock_file = FastAPIUploadFile(
             file=file_io,
-            filename=upload_doc["filename"],
-            content_type="application/pdf"
+            filename=upload_doc["filename"]
+            # Omit 'content_type' to prevent: "got unexpected keyword argument"
         )
 
-        # Extract REAL text from the PDF (NO MORE SAMPLE TEXT!)
+        # Extract REAL text from the PDF
         processing_status[upload_id].message = "Extracting text from PDF..."
         processing_status[upload_id].progress = 20
         print("📄 Extracting text from PDF...")
@@ -190,7 +192,7 @@ async def process_pdf_background(upload_id: str):
         # Use Azure AI to generate full course
         course_data = await processor.process_document(extracted_text, title=upload_doc["title"])
 
-        # Assign new ID for course (different from upload_id if needed)
+        # Assign new ID for course
         course_id = str(uuid.uuid4())
 
         # Prepare modules
@@ -232,7 +234,7 @@ async def process_pdf_background(upload_id: str):
             title=course_data["title"],
             description=course_data["description"],
             objectives=course_data["objectives"],
-            modules=module_ids,  # Only store IDs
+            modules=module_ids,
             estimatedTime=course_data["estimatedTime"],
             difficulty=course_data["difficulty"],
             createdAt=course_data["createdAt"],
@@ -249,9 +251,6 @@ async def process_pdf_background(upload_id: str):
         processing_status[upload_id].course_id = course_id
 
         print(f"✅ Course generation complete: {course_id}")
-
-        # Optional: Clean up temp upload entry
-        # await db.courses.delete_one({"id": upload_id})
 
     except Exception as e:
         print(f"💥 Error in background processing: {e}")
@@ -293,7 +292,6 @@ async def get_course(course_id: str):
     for mod_id in course.get("modules", []):
         module = await db.modules.find_one({"id": mod_id})
         if module:
-            # Inject flashcards/quiz if generated
             module.setdefault("flashcards", [])
             module.setdefault("quiz", {"questions": []})
             expanded_modules.append(module)
@@ -306,7 +304,6 @@ async def get_course(course_id: str):
 async def get_user_courses():
     """List all courses for demo user"""
     courses = await db.courses.find({"user_id": "demo_user"}).to_list(100)
-    # Filter only actual courses (not uploads) based on presence of 'objectives'
     return [c for c in courses if "objectives" in c]
 
 
@@ -367,7 +364,6 @@ async def submit_quiz(course_id: str, module_id: str, payload: dict):
 
     score = (correct / total) * 100 if total > 0 else 0
 
-    # Update attempt count and score in course
     await db.courses.update_one(
         {"id": course_id, "user_id": "demo_user", "modules.id": module_id},
         {"$inc": {"modules.$.quiz.attempts": 1}, "$set": {"modules.$.quiz.score": score}},

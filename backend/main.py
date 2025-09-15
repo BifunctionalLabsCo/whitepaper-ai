@@ -6,7 +6,8 @@ from fastapi.staticfiles import StaticFiles
 import os
 import asyncio
 import uuid
-from typing import Dict
+from typing import Dict, Any, Optional
+import io
 
 from dotenv import load_dotenv
 
@@ -52,8 +53,19 @@ async def startup_event():
 @app.post("/api/test-upload")
 async def test_upload(file: UploadFile = File(...)):
     """Debug upload endpoint"""
-    contents = await file.read()
-    return {"filename": file.filename, "size": len(contents), "content_type": file.content_type}
+    try:
+        contents = await file.read()
+        return {
+            "filename": file.filename,
+            "size": len(contents),
+            "content_type": file.content_type,
+            "status": "success"
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "status": "failed"
+        }
 
 
 @app.post("/api/upload")
@@ -68,12 +80,19 @@ async def upload_whitepaper(
     upload_id = str(uuid.uuid4())
     user_id = "demo_user"  # Hardcoded for demo
 
+    # Validate file type
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Only PDF files are supported (received {file.content_type})"
+        )
+
     # Read file content once
     file_content = await file.read()
     if len(file_content) == 0:
         raise HTTPException(status_code=400, detail="Empty file uploaded")
 
-    # Store raw PDF in a dedicated collection or blob (here we store bytes for simplicity)
+    # Store raw PDF in Firestore
     upload_doc = {
         "id": upload_id,
         "user_id": user_id,
@@ -82,10 +101,15 @@ async def upload_whitepaper(
         "type": "pdf",
         "uploaded_at": asyncio.get_event_loop().time(),
         "status": "uploaded",
+        "file_content": file_content  # CRITICAL: Store the actual file bytes
     }
 
-    # Save metadata + file to Firestore
-    await db.courses.insert_one(upload_doc)  # Reuse courses collection or create 'uploads'
+    try:
+        # Save metadata + file to Firestore
+        await db.courses.insert_one(upload_doc)
+    except Exception as e:
+        print(f"❌ Firestore save error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to store upload metadata")
 
     # Set initial processing status
     processing_status[upload_id] = ProcessingStatus(
@@ -127,25 +151,39 @@ async def process_pdf_background(upload_id: str):
         if not upload_doc:
             raise ValueError("Upload not found")
 
-        # Simulate file retrieval
-        # In prod: use GCS/Blob; now we assume file was stored elsewhere or re-fetched
-        # But since we don’t have persistence, let’s skip full byte storage for demo
-        # Instead, just show logic works — you can simulate with small test PDF
+        # Get file content from Firestore
+        file_content = upload_doc.get("file_content")
+        if not file_content:
+            raise ValueError("File content not found in database")
 
-        # For hackathon demo: inject a sample text if no real file handling
-        sample_text = (
-            "# Artificial Intelligence and Ethics\n"
-            "AI systems must be transparent, fair, and accountable. "
-            "This paper discusses key principles including bias mitigation, explainability, "
-            "and governance frameworks for responsible deployment in healthcare and finance."
+        # Create a file-like object from the stored bytes
+        file_io = io.BytesIO(file_content)
+        
+        # Create a proper UploadFile object
+        from fastapi import UploadFile as FastAPIUploadFile
+        mock_file = FastAPIUploadFile(
+            file=file_io,
+            filename=upload_doc["filename"],
+            content_type="application/pdf"
         )
-        extracted_text = sample_text  # ← Replace this line when integrating real extraction
 
-        # Uncomment below if passing real file content through another method
-        # extracted_text = await processor.extract_pdf_content(mock_file)
+        # Extract REAL text from the PDF (NO MORE SAMPLE TEXT!)
+        processing_status[upload_id].message = "Extracting text from PDF..."
+        processing_status[upload_id].progress = 20
+        print("📄 Extracting text from PDF...")
+
+        extracted_text = await processor.extract_pdf_content(mock_file)
+        
+        # Validate extracted text
+        if not extracted_text or len(extracted_text.strip()) < 100:
+            error_msg = "Extracted text is too short. The PDF may be image-based or corrupted."
+            print(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+
+        print(f"✅ Successfully extracted {len(extracted_text)} characters from PDF")
 
         processing_status[upload_id].progress = 30
-        processing_status[upload_id].message = "Generating course structure..."
+        processing_status[upload_id].message = "Analyzing document structure..."
 
         # Use Azure AI to generate full course
         course_data = await processor.process_document(extracted_text, title=upload_doc["title"])
@@ -202,26 +240,34 @@ async def process_pdf_background(upload_id: str):
         # Save course
         await db.courses.insert_one(final_course)
 
-        # Clean up temp upload entry (optional)
-        # await db.courses.delete_one({"id": upload_id})
-
+        # Update status to completed
         processing_status[upload_id].status = "completed"
         processing_status[upload_id].progress = 100
         processing_status[upload_id].message = f"Course created! ID: {course_id}"
-
-        # Optional: store course_id back in status
         processing_status[upload_id].course_id = course_id
 
         print(f"✅ Course generation complete: {course_id}")
 
+        # Optional: Clean up temp upload entry
+        # await db.courses.delete_one({"id": upload_id})
+
     except Exception as e:
         print(f"💥 Error in background processing: {e}")
         import traceback
-
         traceback.print_exc()
+        
+        error_msg = str(e)
+        if "image-based" in error_msg or "scanned" in error_msg:
+            user_msg = "PDF appears to be image-based. Text extraction failed."
+        elif "Empty" in error_msg:
+            user_msg = "Uploaded PDF is empty or corrupted."
+        else:
+            user_msg = f"Processing failed: {str(e)}"
+        
         processing_status[upload_id].status = "failed"
-        processing_status[upload_id].message = f"Processing failed: {str(e)}"
         processing_status[upload_id].progress = 0
+        processing_status[upload_id].message = user_msg
+        print(f"❌ Processing failed: {user_msg}")
 
 
 @app.get("/api/processing/{upload_id}")
@@ -273,12 +319,16 @@ async def generate_quiz(course_id: str, module_id: str):
     if not module:
         raise HTTPException(status_code=404, detail="Module not found")
 
-    quiz = await processor.generate_module_quiz(
-        module["title"], module["content"], module.get("source_text", "")
-    )
+    try:
+        quiz = await processor.generate_module_quiz(
+            module["title"], module["content"], module.get("source_text", "")
+        )
 
-    await db.update_quiz(module_id, quiz)
-    return quiz
+        await db.update_quiz(module_id, quiz)
+        return quiz
+    except Exception as e:
+        print(f"❌ Quiz generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
 
 
 @app.post("/api/courses/{course_id}/modules/{module_id}/generate-flashcards")
@@ -287,12 +337,16 @@ async def generate_flashcards(course_id: str, module_id: str):
     if not module:
         raise HTTPException(status_code=404, detail="Module not found")
 
-    flashcards = await processor.generate_module_flashcards(
-        module["title"], module["content"], module.get("source_text", "")
-    )
+    try:
+        flashcards = await processor.generate_module_flashcards(
+            module["title"], module["content"], module.get("source_text", "")
+        )
 
-    await db.update_flashcards(module_id, flashcards)
-    return {"flashcards": flashcards}
+        await db.update_flashcards(module_id, flashcards)
+        return {"flashcards": flashcards}
+    except Exception as e:
+        print(f"❌ Flashcard generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Flashcard generation failed: {str(e)}")
 
 
 @app.post("/api/courses/{course_id}/modules/{module_id}/quiz")
